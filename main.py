@@ -1,3 +1,7 @@
-knights = {'gallahad': 'the pure', 'robin': 'the brave'}
-for k, v in knights.items():
-    print(k, v)
+
+import requests
+api_url = "https://swapi.dev/api/people/1"
+response = requests.get(api_url)
+response.json()
+print(response)
+print(response.json())
