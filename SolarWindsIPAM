@@ -1,0 +1,91 @@
+import pymssql
+from datetime import datetime
+
+
+
+def connect_database(DB_User = '', DB_Secret = ''):
+    # Setup DB Connections
+    # TODO - Replace with call to Secret Server
+    DB_Server = '203.170.0.42'
+    conn = pymssql.connect(DB_Server, DB_User, DB_Secret)
+    cursor = conn.cursor()
+    return cursor, conn
+
+
+# Get the next available IP address for a specific subnet
+def get_next_free_ip_by_subnet(subnet_id):
+    cursor, conn = connect_database()
+    cursor.execute("""
+        select top 1 IPAddress
+        from SolarWindsOrion.dbo.IPAM_Node IPN
+        join SolarWindsOrion.dbo.IPAM_Group IPG on IPN.SubnetId = IPG.GroupId
+        where IPG.GroupId = '""" + subnet_id + """'
+        and IPN.Status = 2
+        and IPN.DnsBackward is NULL    
+    """)
+    return cursor.fetchone()[0]
+
+
+# Mark IP as in use, and set the hostname
+def reserve_ip_address(ip_address, hostname, subnet_id, allocation_tag):
+    cursor, conn = connect_database()
+    if is_ip_available(ip_address, None):
+        return True
+    else:
+        if len(allocation_tag) < 1:
+            allocation_tag = 'Assigned by OSS - ' + str(datetime.now().strftime('%Y-%m-%d %H:%M%S'))           
+
+        cursor.execute("""
+            update SolarWindsOrion.dbo.IPAM_Node
+            set DnsBackward = '""" + hostname + """', Status = 4, Comments = '""" + allocation_tag + """'
+            where SubnetId = '""" + subnet_id + """'
+            and IPAddress = '""" + ip_address + """'
+            and Status = 2
+        """)
+        conn.commit()
+        if is_ip_available(ip_address, subnet_id):
+            return False
+        else:
+            return True
+
+
+# Check if an IP is already reserved
+def is_ip_available(ip_address, subnet_id):
+    cursor, conn = connect_database()
+    cursor.execute("""
+        select Status
+        from SolarwindsOrion.dbo.IPAM_Node
+        where SubnetId = '""" + subnet_id + """'
+        and IPAddress = '""" + ip_address + """'
+    """)
+    lst_results = cursor.fetchone()
+
+    # 1 = Used, 2 = Available, 4 = Reserved
+    if lst_results[0] == 2:
+        return True
+    elif lst_results[0] == 4 or lst_results[0] == 1:
+        return False
+    else:
+        return False
+
+
+# Get the reservation status of an IP in IPAM, and return a user friendly string
+def get_ip_reservation_status(ip_address, subnet_id):
+    cursor, conn = connect_database()
+    cursor.execute("""
+        select Status
+        from SolarwindsOrion.dbo.IPAM_Node
+        where SubnetId = '""" + subnet_id + """'
+        and IPAddress = '""" + ip_address + """'
+    """)
+    lst_results = cursor.fetchone()
+
+    # 1 = Used, 2 = Available, 4 = Reserved
+    if lst_results[0] == 2:
+        return "available"
+    elif lst_results[0] == 4:
+        return "reserved"
+    elif lst_results[0] == 1:
+        return "used"
+    else:
+        return "other"
